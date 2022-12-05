@@ -1,0 +1,494 @@
+---
+title             : "EDLD 654 Final Project: Fiction Transportation Modeling Proof of Concept"
+shorttitle        : "EDLD 654 Final"
+
+author: 
+  - name          : "Eliott Doyle"
+    affiliation   : "1"
+    corresponding : yes    # Define only one corresponding author
+
+affiliation:
+  - id            : "1"
+    institution   : "University of Oregon"
+
+
+  
+keywords          : "keywords"
+wordcount         : "X"
+
+bibliography      : ["r-references.bib"]
+
+floatsintext      : yes
+figurelist        : no
+tablelist         : no
+footnotelist      : no
+linenumbers       : no
+mask              : no
+draft             : no
+
+documentclass     : "apa6"
+classoption       : "man"
+output            : papaja::apa6_pdf
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(papaja)
+r_refs("r-references.bib")
+library(tidyverse)
+library(recipes)
+library(vtable)
+library(caret)
+library(vip)
+library(finalfit)
+
+writ <- read_csv("writ_embeddings.csv")
+
+
+#View(writ)
+```
+
+## Research Problem
+
+Last year I collected data for my master's project, in which participants in three experimental conditions wrote short stories, letters, or journal entries and responded to some surveys and demographic questions. Subsequently, several research assistants coded these writing samples for *transportation*: the extent to which the reader (i.e., the coder) feels that they were immersed or swept up in the text. 
+
+Transportation is one of the main operationalizations of audience involvement when reading a text; the degree to which someone experiences transportation while reading generally predicts how much they are emotionally affected by the text, how much they identify with the characters, and how much they are persuaded by the text's message [@Green2004].
+
+I am interested in how author features contribute to their ability to write a text that is transporting to readers. My research more broadly focuses on empathic accuracy, or, how well people are able to understand what another person is feeling during interactions. The manner in which the target (or, person being perceived, who the perceiver is attempting to empathize with) expresses themselves affects how well the perceived is able to pick up on their thoughts and feelings, and features like how invested the target is in what they are communicating, experience communicating with others, and emotional expressivity can influence how easy their communication is to parse for a perceiver. While transportation does not directly tie to empathic accuracy, it is related, in that it is a measure of how compelled the perceiver is by the target's words. 
+
+Most past research on transportation has focused on the features of the perceiver/audience rather than of the author. I am interested in investigating author features. Identifying characteristics of authors that make them better at writing texts that produce high transportation in others will help illuminate what makes communication more effective. Being able to model the transportation scores of texts based on the text and characteristics of the author will be informative in my understanding of what aspects of authors' experience while writing leads to more effective writing that has an impact on readers/perceivers. 
+
+## Description of the Data
+
+264 University of Oregon undergraduates participated in this study and produced data that was usable for the current analyses. The sample size was adequate for the ANOVA and linear regression analyses I conducted for hypothesis testing, but because it is relatively small for machine learning purposes, I will be considering this a proof of concept for future applications similar to this, rather than a definitive model for predicting transportation.
+
+*Predicted variable: Transportation.* Seven research assistants coded the writing samples for transportation on a Likert scale ranging from 1 (no transportation) to 5 (very high transportation). The mean scores from all seven research assistants make up the transportation variable.
+
+```{r, echo = FALSE, warning = FALSE}
+writ %>% ggplot(aes(x = transpall)) +
+  geom_histogram(bins = 8, color = "black", fill = "grey") +
+   theme_bw() +
+  labs(title = "Distribution of Observations by Transportation Score",
+       y = "Number of Observations",
+       x = "Transportation Score")
+```
+
+*Writing samples.* The writing samples were personal in nature and so are confidential. I have gotten the embeddings from the samples without the samples themselves, and saved those for the purposes of this project.
+
+*Writing experience.* Authors reported how much experience they have with writing fiction and journaling, within the past year and prior to the past year when they participated in the study. These were four separate questions that here will be treated as one measure with mean scores for the four questions representing writing experience. 1 indicates no writing experience; 3 indicates frequent and long-time writing experience in different forms. Mean writing experience was 1.610 with standard deviation 0.434, indicating that authors generally had some writing experience but not a lot, with a lot of variability.
+
+```{r, include = FALSE}
+m_wriex <- mean(writ$write_all4, na.rm = TRUE)
+m_wriex
+sd_wriex <- sd(writ$write_all4, na.rm = TRUE)
+sd_wriex
+```
+
+```{r, echo = FALSE, warning = FALSE}
+writ %>% ggplot(aes(x = write_all4)) +
+  geom_histogram(bins = 8, color = "black", fill = "grey") +
+   theme_bw() +
+  labs(title = "Distribution of Observations by Writing Experience",
+       y = "Number of Observations",
+       x = "Writing Experience Score")
+```
+
+
+*Interpersonal Reactivity Index (IRI).* The IRI [@IRI1983] is a popular measure of trait empathy. The authors of the writing samples completed this survey, so this is a measure of author trait empathy, not perceiver empathy. The IRI comprises 28 questions; the mean score for each other is reported with 1 being very low empathy and 5 being very high empathy. Mean IRI score was 3.468, with SD = 0.444. The distribution of responses was normal. 
+
+
+```{r, include=FALSE}
+m_iri <- mean(writ$iri, na.rm = TRUE)
+m_iri
+sd_iri <- sd(writ$iri, na.rm = TRUE)
+sd_iri
+```
+
+```{r, echo = FALSE, warning = FALSE}
+writ %>% ggplot(aes(x = iri)) +
+  geom_histogram(bins = 8, color = "black", fill = "grey") +
+   theme_bw() +
+  labs(title = "Distribution of Observations per Interpersonal Reactivity Index (IRI) Score",
+       y = "Number of Observations",
+       x = "IRI Score")
+```
+
+*Character liking.* Authors rated how much they liked the characters they were writing about on a measure of liking comprising 9 questions. The mean score for each author is reported with 1 being strong dislike for the character and 5 being strong liking for the character. Mean character liking was 3.566 with SD = 0.771. Liking was fairly high presumably because authors were instructed to choose their favorite fictional character.
+
+```{r, include=FALSE}
+m_charlike <- mean(writ$charlike, na.rm = TRUE)
+m_charlike
+sd_charlike <- sd(writ$charlike, na.rm = TRUE)
+sd_charlike
+```
+
+```{r, echo = FALSE, warning = FALSE}
+writ %>% ggplot(aes(x = charlike)) +
+  geom_histogram(bins = 8, color = "black", fill = "grey") +
+   theme_bw() +
+  labs(title = "Distribution of Observations per Score on Character Liking",
+       y = "Number of Observations",
+       x = "Character Liking Scale Score")
+```
+
+
+*Missingness.*
+
+```{r, include=FALSE}
+missing_ <- ff_glimpse(writ)$Continuous
+
+head(missing_)
+```
+
+These data have already been cleaned, so there are not many missing values. No variable is missing more than a few data points, so I have not dropped any of my variables from the analyses.
+
+
+
+
+# Description of the Models
+
+Describe each model fit, why the given 
+model was selected, which hyperparameters to be optimized and how, 
+assumptions of the model, and a high-level (think broad audience) description of 
+what the model is doing and why it is appropriate (even as an initial starting 
+point). Also, discuss how you plan to evaluate model performance. 
+
+#### Model 1: Linear Regression.
+I chose to start with a linear regression model without penalty because I am trying to predict a continuous variable using predictor variables, and I want to know which of those predictor variables are the most helpful in predicting transportation scores. This model looks at all the predictor variables I have, and tells us how much of the variance in transportation scores is predicted by the linear relationship between the predictor variables and transportation. I want to start with this model because it is relatively straightforward, but it might have issues with modeling patterns that aren't there because I have more predictor variables than I have samples. There are no hyperparameters to tune for this model.
+
+#### Model 2: Ridge Regression.
+My next model is regression with ridge penalty. I will need to tune the lambda value for this model. It might be a good idea to implement a penalty because I have a lot of predictor variables, some of which I expect to be correlated with each other, and because I do not have as many samples as I have predictor variables. Using ridge regression will reduce sampling variation to help avoid modeling the noise of the data, and hopefully only capture signal. In other words, I have a lot of predictors and not a lot of samples, so there will be a tendency for a linear regression without penalty to make predictions of patterns that aren't there. Doing a ridge regression will put some constraints on the model to cut out meaningless patterns that might show up in the plain linear regression model.
+
+#### Model 3: Bagged Trees.
+Finally, I will model the data using bagged trees. This will provide a non-linear model of the data, in case a linear approach is not the best way to look at the relationships between variables in my data. This model is based on decision trees: in a decision tree analysis, individual continuous variables are split at some optimal point, below which the analysis is conducted differently from the observations above the cutoff. This can be done for any number of variables, any number of times. It is difficult to predict which variables and which cut points will be best (hyperparameters that would need to be tuned, in a decision tree analysis), so it is best to do a lot of decision trees with cuts at different places to determine which is best. I opted to use bagged trees instead of random forests because random forests randomizes rows as well as columns and I have a very limited number of rows. For this analysis, the hyperparameter that will need to be tuned is the number of trees.
+
+#### Evaluation of Model Performance.
+I will compare the root mean squared error (RMSE), mean absolute error (MAE), and R-square of the test data. I will be looking for low values for the error terms (RMSE and MAE) and high values of R-square to determine the best model for my data.
+
+
+
+# Model Fit
+
+#### Linear Regression Model.
+
+```{r, include = FALSE}
+outcome <- c('transpall')
+
+id      <- c('id_pavlovia')
+
+numeric <- c(paste0('V', 1:768), 'iri', 'charlike', 'write_all4') 
+
+
+```
+
+```{r, include=FALSE}
+blueprint <- recipe(x  = writ,
+                    vars  = c(id,numeric,outcome),
+                    roles = c('id',rep('predictor',771),'outcome')) %>%
+             step_normalize(all_numeric_predictors()) %>%
+             step_impute_mean(all_numeric_predictors())
+
+
+blueprint
+```
+
+
+```{r, include=FALSE}
+set.seed(12132022) 
+
+# Train/Test Split
+  
+loc      <- sample(1:nrow(writ), round(nrow(writ) * 0.75))
+writ_tr  <- writ[loc, ]
+writ_te  <- writ[-loc, ]
+
+dim(writ_tr)
+
+dim(writ_te)
+```
+
+```{r, include=FALSE}
+# Randomly shuffle the data
+
+    writ_tr = writ_tr[sample(nrow(writ_tr)),]
+
+# Create 10 folds with equal size
+
+    folds = cut(seq(1,nrow(writ_tr)),breaks=10,labels=FALSE)
+  
+# Create the list for each fold 
+      
+    my.indices <- vector('list',10)
+
+    for(i in 1:10){
+        my.indices[[i]] <- which(folds!=i)
+    }
+      
+cv <- trainControl(method = "cv",
+                   index  = my.indices)
+
+grid <- data.frame(alpha = 0, lambda = 0) 
+```
+
+```{r, echo = FALSE}
+caret_mod <- caret::train(blueprint, 
+                          data      = writ_tr, 
+                          method    = "glmnet", 
+                          trControl = cv,
+                          tuneGrid  = grid)
+
+caret_mod
+```
+```{r, echo=FALSE}
+caret_mod$results
+```
+
+```{r, echo=FALSE}
+predicted_te <- predict(caret_mod, writ_te)
+```
+
+```{r, echo=FALSE}
+rsq_te <- cor(writ_te$transpall,predicted_te)^2
+rsq_te
+
+mae_te <- mean(abs(writ_te$transpall - predicted_te))
+mae_te
+
+rmse_te <- sqrt(mean((writ_te$transpall - predicted_te)^2))
+rmse_te
+
+
+```
+
+
+
+#### Ridge Regression Model.
+
+```{r, include=FALSE}
+grid2 <- data.frame(alpha = 0, lambda = seq(1,5,.01)) 
+#grid2
+```
+
+```{r, include=FALSE}
+ridge <- caret::train(blueprint, 
+                        data      = writ_tr, 
+                        method    = "glmnet", 
+                        trControl = cv,
+                        tuneGrid  = grid2)
+```
+
+```{r, include=FALSE}
+ridge$results
+```
+
+
+Below is a plot of RMSE for different values of lambda. RMSE is flat until lambda is greater than 4, at which point RMSE goes up rapidly.  
+
+```{r, echo=FALSE}
+plot(ridge)
+```
+
+```{r, include = FALSE}
+ridge$bestTune
+```
+
+The best lambda value for this model is 3.97, so I will be proceeding with that. The results for the model using that lambda value are:
+
+```{r, echo=FALSE}
+ridge$results[298,]
+```
+
+Below are the importance evaluations of each of the predictors in this model:
+
+```{r, echo=FALSE}
+vip(ridge, 
+    num_features = 10, 
+    geom = "point") + 
+theme_bw()
+```
+The top ten most important predictors in this model are all encodings of the text data
+
+```{r, include=FALSE}
+predict_te_ridge <- predict(ridge, writ_te)
+#predict_te_ridge
+```
+
+```{r, include=FALSE}
+rsq_te2 <- cor(writ_te$transpall,predict_te_ridge)^2
+rsq_te2
+
+mae_te2 <- mean(abs(writ_te$transpall - predict_te_ridge))
+mae_te2
+
+rmse_te2 <- sqrt(mean((writ_te$transpall - predict_te_ridge)^2))
+rmse_te2
+```
+
+
+```{r, include=FALSE}
+rsq_te <- cor(writ_te$transpall,predicted_te)^2
+rsq_te
+
+mae_te <- mean(abs(writ_te$transpall - predicted_te))
+mae_te
+
+rmse_te <- sqrt(mean((writ_te$transpall - predicted_te)^2))
+rmse_te
+```
+
+
+
+
+#### Bagged Trees.
+
+
+```{r, include=FALSE}
+# Cross validation settings 
+    
+    writ_tr = writ_tr[sample(nrow(writ_tr)),]
+  
+    # Create 10 folds with equal size
+    
+    folds = cut(seq(1,nrow(writ_tr)),breaks=10,labels=FALSE)
+    
+    # Create the list for each fold 
+    
+    my.indices <- vector('list',10)
+    for(i in 1:10){
+      my.indices[[i]] <- which(folds!=i)
+    }
+    
+    cv <- trainControl(method = "cv",
+                       index  = my.indices)
+
+# Grid, running with all predictors in the data (771)
+
+grid3 <- expand.grid(mtry = 771,splitrule='variance',min.node.size=2)
+grid3
+```
+
+
+```{r, include=FALSE}
+# Bagging with 10 tree models
+
+bagged.trees <- caret::train(blueprint,
+                             data      = writ_tr,
+                             method    = 'ranger',
+                             trControl = cv,
+                             tuneGrid  = grid3,
+                             num.trees = 10,
+                             max.depth = 60)
+```
+
+
+```{r, echo=FALSE}
+bagged.trees$results
+```
+
+```{r, include=FALSE}
+ nbags <- c(5,seq(from = 20,to = 200, by = 20))
+    
+  bags <- vector('list',length(nbags))
+    
+    for(i in 1:length(nbags)){
+      
+      bags[[i]] <- caret::train(blueprint,
+                                data      = writ_tr,
+                                method    = 'ranger',
+                                trControl = cv,
+                                tuneGrid  = grid3,
+                                num.trees = nbags[i],
+                                max.depth = 60)
+      
+      print(i)
+      
+    }
+```
+
+Below is a plot of RMSEs for the model using different numbers of trees. The minimum RMSE comes from a model using 160 trees, so I will proceed with that.
+
+```{r, echo=FALSE}
+rmses <- c()
+
+for(i in 1:length(nbags)){
+  
+  rmses[i] = bags[[i]]$results$RMSE
+  
+}
+
+ggplot()+
+  geom_line(aes(x=nbags,y=rmses))+
+  xlab('Number of Trees')+
+  ylab('RMSE')+
+  theme_bw() +
+  labs(
+    title = "Root Mean Square Error (RMSE) by Number of Trees in Bagged Trees Model"
+  ) +
+  geom_vline(xintercept = 160, , linetype="dashed", color = "forestgreen")
+```
+
+```{r}
+nbags[which.min(rmses)]
+```
+
+
+```{r, include=FALSE}
+# Predictions from a Bagged tree model with 160 trees
+
+predicted_te3 <- predict(bags[[1]],writ_te)
+```
+
+```{r, include=FALSE}
+# MAE
+
+mae_te3 <- mean(abs(writ_te$transpall - predicted_te3))
+```
+
+```{r, include=FALSE}
+# RMSE
+
+rmse_te3 <- sqrt(mean((writ_te$transpall - predicted_te3)^2))
+```
+
+```{r, include=FALSE}
+# R-square
+
+rsq_te3 <- cor(writ_te$transpall,predicted_te3)^2
+```
+
+
+
+
+# Model Comparison
+
+```{r, echo=FALSE}
+tab <- matrix(data = c(rsq_te, rsq_te2, rsq_te3,
+                       mae_te, mae_te2, mae_te3,
+                       rmse_te, rmse_te2, rmse_te3), nrow = 3, ncol = 3)
+colnames(tab) <- c('R-sq', 'MAE', 'RMSE')
+rownames(tab) <- c('Linear', 'Ridge', 'Bagged Trees')
+tab <- as.table(tab)
+tab
+```
+
+The bagged trees model yields a lower R-square and higher MAE and higher RMSE than either regression model. I would therefore choose not to use bagged trees for this analysis.
+
+All terms are identical for linear regression without penalty and for linear regression with ridge penalty. The RMSE was the same in the ridge regression model for all lambda values up to the optimal cutoff point, and non-penalized linear regression uses a lambda value of 0, which is why these models aren't different. This tells us that overfitting is not an issue for linear regression in these data. I would favor linear regression over ridge regression because it's simpler to run, but functionally it makes no real difference.
+
+
+# Discussion
+
+The regression models were the best for predicting the transportation score of the writing samples provided by the participants in my study. Linear regression without penalty and with ridge penalty were equally predictive; neither was excellent, but both were better at predicting transportation than the bagged trees model. 
+
+Some of the text encodings were the most important in predicting transportation score: the text samples themselves seem to do a better job of predicting how transporting readers will find the writing than features of the writer. This is not necessarily unexpected, as transportation scores came from research assistants reading the writing samples (with no knowledge of the participants' backgrounds or personalities). This is interesting because it suggests that people can write stories that are transporting to readers more or less regardless of their personal qualities — at least, in the case of these very short stories. This also indicates that I should look into other features of the writing itself that can be operationalized that underlies transportation scores — in other words, what do the encodings mean, and could we code for/name them so as to develop a better model with or without these encodings? It is somewhat inconvenient not to know what exactly the encodings mean, since it is hard to come to any real conclusions about what features of the text lead to transportation that are psychologically meaningful. It is helpful to have a model that can predict transportation based on text, but it does not mean very much, and might not be very satisfying if I were to write it up in a report for a psychological journal. However, the small sample size makes it so that using this model would not be a good idea. 
+
+Overall, the conclusion I get from this is that the participant features included in this model (empathy scale scores, writing experience, and liking of the character they were writing about) probably are not the most important features to look at when determining how transporting their writing will be. In the future, it might be useful to build a model like this that uses text encodings that could predict how transporting text samples are so that human coders would not have to code thousands upon thousands of new text samples, and then to use the predictions from the model instead of transportation scores from human coders as the transportation variable in larger-scale studies — if we were not reliant on human coders to determine transportation because we had a model that could assign transportation scores reasonably well, then we could use the model's predictions as a variable, and then use participant self-report to determine the relationship between empathy score or writing experience or other variables. So, going forward, if I planned to do large-scale studies trying to explain what features of a writer lead them to write transporting stories, it would be helpful to collect a lot of text samples and have human coders rate them on transportation in order to build a model in a pilot study, and then use the model's scores instead of human coders' transportation score in the actual study.
+
+
+\newpage
+**REFERENCES**
+
+
+
+
