@@ -49,6 +49,8 @@ writ <- read_csv("writ_embeddings.csv")
 #View(writ)
 ```
 
+The GitHub repository for this project can be found at https://github.com/ekgekd/EDLD654final
+
 ## Research Problem
 
 Last year I collected data for my master's project, in which participants in three experimental conditions wrote short stories, letters, or journal entries and responded to some surveys and demographic questions. Subsequently, several research assistants coded these writing samples for *transportation*: the extent to which the reader (i.e., the coder) feels that they were immersed or swept up in the text. 
